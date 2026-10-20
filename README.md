@@ -100,3 +100,28 @@ vignette("OncoSeq")
 ## Licence
 
 GPL-3.
+
+
+## Provenance
+
+This package was independently conceived, designed, developed, and maintained by the author. 
+AI tools, particularly Anthropic Claude Opus 5, were used selectively to provide technical 
+assistance in areas where additional guidance was needed, including troubleshooting, 
+debugging, code refinement, and resolving specific implementation challenges.
+
+The author retained full control over the package's scope, architecture, functionality, 
+source code, documentation, unit tests, and validation processes. All AI-assisted 
+suggestions were critically reviewed, adapted where necessary, and tested by the author. 
+Package validation included running `R CMD check --as-cran` and `BiocCheck` locally and 
+through continuous integration.
+
+No code was knowingly copied from third-party packages or repositories, and all 
+dependencies are accessed through their publicly documented APIs. The package is 
+distributed under the GPL-3 licence.
+
+The author assumes full responsibility for the originality, correctness, maintenance, 
+and scientific integrity of the package.
+
+This disclosure is provided in accordance with Bioconductor's 
+[AI and Third Party Code](https://contributions.bioconductor.org/ai-policy-third-party.html)
+ policy.
