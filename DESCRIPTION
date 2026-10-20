@@ -1,0 +1,45 @@
+Package: OncoSeq
+Type: Package
+Title: End-to-End Analysis of Cancer Transcriptomes and Genomes
+Version: 0.99.0
+Authors@R: person(given = "Umar", family = "Ahmad",
+    email = "babasaraki@yahoo.co.uk", role = c("aut", "cre"),
+    comment = c(ORCID = "0000-0002-3216-5171"))
+Description: OncoSeq provides a unified, end-to-end workflow for cancer
+    transcriptomic and genomic data analysis. A single container class
+    couples bulk RNA-sequencing counts with somatic mutation calls,
+    gene-level copy-number alterations and clinical follow-up for the same
+    set of tumour samples. The package covers data import from the Genomic
+    Data Commons, cBioPortal and local quantification files; quality
+    control and filtering; normalisation; differential expression through
+    DESeq2, edgeR or limma-voom behind one interface; gene-set enrichment
+    and over-representation testing; Kaplan-Meier and Cox survival
+    modelling including genome-wide survival screens; mutation and
+    copy-number summarisation; integration of genomic alterations with
+    expression; and publication-ready visualisation. Every analysis is
+    recorded in the object so that a complete study can be reproduced
+    from one object.
+License: GPL-3
+Encoding: UTF-8
+Depends: R (>= 4.4.0), SummarizedExperiment
+Imports: methods, stats, utils, grDevices, S4Vectors, DESeq2, edgeR,
+        limma, fgsea, BiocParallel, survival, ggplot2, ggrepel,
+        matrixStats, httr2, jsonlite
+Suggests: TCGAbiolinks, maftools, clusterProfiler, org.Hs.eg.db,
+        ComplexHeatmap, pheatmap, survminer, tximport, msigdbr, apeglm,
+        testthat (>= 3.0.0), knitr, rmarkdown, BiocStyle
+biocViews: Software, GeneExpression, DifferentialExpression, RNASeq,
+        Transcriptomics, Sequencing, GeneSetEnrichment, Survival,
+        SomaticMutation, CopyNumberVariation, Visualization,
+        QualityControl, DataImport, Normalization, MultipleComparison
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+URL: https://github.com/babasaraki/OncoSeq
+BugReports: https://github.com/babasaraki/OncoSeq/issues
+Collate: 'AllGenerics.R' 'AllClasses.R' 'methods-OncoSeqExperiment.R'
+        'utils.R' 'import-local.R' 'import-gdc.R' 'import-cbioportal.R'
+        'qc.R' 'normalize.R' 'de.R' 'genesets.R' 'enrichment.R'
+        'mutations.R' 'cnv.R' 'survival.R' 'integrate.R' 'plots.R'
+        'pipeline.R' 'data.R' 'zzz.R'
+Config/roxygen2/version: 8.1.1
+NeedsCompilation: no

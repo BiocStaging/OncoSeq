@@ -1,0 +1,311 @@
+---
+title: "Analysing cancer transcriptomes and genomes with OncoSeq"
+author: "Umar Ahmad"
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Analysing cancer transcriptomes and genomes with OncoSeq}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE, comment = "#>", fig.width = 6, fig.height = 4,
+    dpi = 72, warning = FALSE, message = FALSE)
+```
+
+# Why OncoSeq
+
+A cancer genomics study rarely stops at a list of differentially expressed
+genes. The same tumours carry mutations, copy-number changes and clinical
+follow-up, and the interesting questions sit between those layers: which
+transcriptional programme accompanies a driver mutation, whether a
+copy-number gain actually raises expression, whether a signature predicts
+outcome once stage is accounted for.
+
+OncoSeq keeps all of that in one object. `OncoSeqExperiment` extends
+`SummarizedExperiment`, so everything you already know about
+Bioconductor containers applies, and adds three layers plus a record of
+every analysis you run.
+
+```{r load}
+library(OncoSeq)
+library(SummarizedExperiment)
+```
+
+# Getting data in
+
+## From your own quantification
+
+`importCounts()` takes a count matrix and a table of sample annotation,
+either as objects or as paths to delimited files, and checks that their
+sample identifiers agree.
+
+```{r import-counts, eval = FALSE}
+ose <- importCounts("counts.tsv", "samples.tsv",
+                    mutations = "cohort.maf")
+```
+
+`importTximport()` summarises salmon or kallisto output to the gene level,
+and `asOncoSeq()` wraps a `SummarizedExperiment`, `DESeqDataSet` or
+`DGEList` you already have.
+
+## From public repositories
+
+`importGDC()` pulls a TCGA project from the Genomic Data Commons,
+assembling expression, clinical data and, on request, mutations and
+copy number into one object.
+
+```{r import-gdc, eval = FALSE}
+blca <- importGDC("TCGA-BLCA", sampleType = "Primary Tumor",
+                  mutations = TRUE, cnv = TRUE)
+```
+
+`importCBioPortal()` does the same against cBioPortal's curated studies,
+which is quicker and needs no download cache.
+
+```{r import-cbio, eval = FALSE}
+cbioStudies("bladder")[, c("studyId", "name")]
+blca <- importCBioPortal("blca_tcga_pan_can_atlas_2018",
+                         genes = c("TP53", "RB1", "FGFR3", "ERBB2"))
+```
+
+## The example objects
+
+Two datasets ship with the package. `exampleOncoSeq()` simulates a small
+count-scale cohort, which is what the differential-expression sections
+below use. `blcaExample` is a real 420-gene by 400-sample slice of the
+TCGA bladder cohort, used for the genomic and survival sections.
+
+```{r example}
+ose <- exampleOncoSeq()
+ose
+```
+
+# Quality control
+
+`qcMetrics()` writes per-sample depth and detection statistics into
+`colData()`, where they are available as covariates or filters.
+
+```{r qc}
+ose <- qcMetrics(ose)
+head(colData(ose)[, c("library_size", "detected_genes")])
+```
+
+`detectOutliers()` flags samples that sit far from the bulk of the data,
+both by distance in principal-component space and by low correlation with
+the other samples. It reports; it does not remove.
+
+```{r outliers}
+out <- detectOutliers(ose)
+out[out$outlier, ]
+```
+
+`filterLowExpression()` drops features too weakly expressed to test. With
+a grouping variable it uses `edgeR::filterByExpr()`.
+
+```{r filter}
+ose <- filterLowExpression(ose, group = "condition")
+```
+
+# Normalisation
+
+```{r normalise}
+ose <- normalizeCounts(ose, method = "vst")
+assayNames(ose)
+```
+
+The raw counts are never overwritten; each method adds an assay. A
+principal-component plot is the quickest check that the groups separate.
+
+```{r pca, fig.cap = "Samples in the space of the first two principal components."}
+plotSamplePCA(ose, colourBy = "condition")
+```
+
+# Differential expression
+
+One interface covers three engines. The contrast is written the same way
+for all of them.
+
+```{r de}
+ose <- diffExpress(ose, ~ condition,
+                   contrast = c("condition", "tumour", "normal"),
+                   engine = "DESeq2")
+head(getAnalysis(ose, "de"))
+```
+
+Covariates go in the design and are adjusted for:
+
+```{r de-covariate, eval = FALSE}
+ose <- diffExpress(ose, ~ stage + condition,
+                   contrast = c("condition", "tumour", "normal"))
+```
+
+Because the three engines make different distributional assumptions,
+agreement between them is a useful sanity check on a signature.
+
+```{r compare}
+cmp <- compareEngines(ose, ~ condition,
+                      contrast = c("condition", "tumour", "normal"))
+cmp$overlap
+```
+
+```{r volcano, fig.cap = "Volcano plot of the tumour versus normal contrast."}
+plotVolcano(ose, nLabel = 8)
+```
+
+```{r heatmap, fig.cap = "Standardised expression of the most variable features."}
+plotExpressionHeatmap(ose, nTopGenes = 30, annotationColumn = "condition")
+```
+
+# Gene set enrichment
+
+`runGSEA()` ranks every tested feature and calls `fgsea`; `runORA()` tests
+the significant list against each set with the hypergeometric
+distribution. Both store a table in the same format.
+
+```{r enrich}
+sets <- readGMT(system.file("extdata", "example_sets.gmt",
+                            package = "OncoSeq"))
+ose <- runGSEA(ose, sets, minSize = 3)
+head(getAnalysis(ose, "gsea")[, c("set", "NES", "padj")])
+```
+
+```{r enrich-plot, fig.cap = "Normalised enrichment scores."}
+plotEnrichmentBar(ose, "gsea")
+```
+
+For real work, load a collection with `readGMT()` or, if you have
+`msigdbr` installed, `msigdbrSets("Homo sapiens", "H")`.
+
+# The genomic layers
+
+From here on we use the real bladder cohort.
+
+```{r blca}
+data(blcaExample)
+blcaExample
+```
+
+## Mutations
+
+```{r mutfreq}
+head(mutationFrequency(blcaExample, topN = 10))
+```
+
+```{r mutplot, fig.cap = "Mutation frequency with exact binomial confidence intervals."}
+plotMutationFrequency(blcaExample, topN = 15)
+```
+
+```{r oncoprint, fig.height = 4.5, fig.cap = "Mutation landscape of the ten most frequently altered genes."}
+plotOncoprint(blcaExample, topN = 10)
+```
+
+Tumour mutation burden is written back into `colData()`:
+
+```{r tmb}
+blcaExample <- tumourMutationBurden(blcaExample, captureSize = 38)
+summary(colData(blcaExample)$tmb)
+```
+
+Note that the burden computed here reflects only the genes in this trimmed
+panel, not the whole exome; on a complete MAF it is the conventional
+non-synonymous-variants-per-megabase figure.
+
+## Copy number
+
+```{r cnv}
+head(cnvSummary(blcaExample)$perGene)
+```
+
+```{r cnvplot, fig.cap = "Gain and loss frequency across the cohort."}
+plotCNVFrequency(blcaExample, topN = 15)
+```
+
+Whether a copy-number change actually moves the transcript is a separate
+question:
+
+```{r cnvcor}
+head(cnvExpressionCorrelation(blcaExample), 5)
+```
+
+# Survival
+
+`survivalFit()` stratifies by whatever layer the feature lives in. It
+searches expression, mutation, copy number and clinical data in that
+order unless you name the layer.
+
+```{r km, fig.cap = "Overall survival by TP53 mutation status."}
+fit <- survivalFit(blcaExample, "TP53", by = "mutation")
+fit
+plotKM(fit, timeLabel = "Months")
+```
+
+For a continuous feature, choose how to split. The `"optimal"` rule
+searches for the most separating threshold, which inflates significance;
+the result reports both the raw and the search-corrected p-value, and only
+the latter should be quoted.
+
+```{r km-expr, eval = FALSE}
+survivalFit(blcaExample, "MKI67", by = "expression", split = "optimal")
+```
+
+A multivariable model mixes clinical covariates with expression
+(`expr:`) and mutation (`mut:`) terms:
+
+```{r cox}
+coxModel(blcaExample, c("AGE", "expr:TP53", "mut:RB1"), name = NULL)
+```
+
+`survivalScreen()` fits one Cox model per gene and corrects across genes.
+
+```{r screen}
+screen <- survivalScreen(blcaExample, name = NULL)
+head(screen, 5)
+```
+
+# Integrating layers
+
+The question that motivates the whole container: what does a driver
+mutation do to the transcriptome?
+
+```{r integrate}
+colData(blcaExample)$TP53_status <- mutationStatus(blcaExample, "TP53")
+res <- diffExpress(blcaExample, ~ TP53_status,
+                   contrast = c("TP53_status", "mutant", "wild-type"),
+                   engine = "limma", assay = "expression", voom = FALSE,
+                   name = "de_TP53")
+head(getAnalysis(res, "de_TP53"), 5)
+```
+
+On a count-scale object, `integrateMutationExpression()` does the same in
+one call and handles the group-size checks for you.
+
+# Running everything at once
+
+`runOncoSeq()` chains quality control, filtering, normalisation,
+differential expression, enrichment, mutation burden and a survival
+screen, skipping any step whose inputs are missing.
+
+```{r pipeline}
+full <- runOncoSeq(exampleOncoSeq(), ~ condition,
+                   contrast = c("condition", "tumour", "normal"),
+                   geneSets = sets, engine = "edgeR",
+                   normalisation = "vst", verbose = FALSE)
+names(analyses(full))
+```
+
+Every step is recorded, so an object can account for itself:
+
+```{r provenance}
+vapply(provenance(full)$steps, `[[`, character(1), "step")
+```
+
+# Session information
+
+```{r session}
+sessionInfo()
+```
